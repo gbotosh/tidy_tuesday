@@ -1,0 +1,425 @@
+---
+title: "SUMMER OLYMPICS DASHBOARD"
+author: "GBOTOSO Olaoluwa"
+format: dashboard
+theme: lux
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+# Load packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, 
+               here,
+               sf,
+               bslib, 
+               bsicons,
+               rnaturalearth, 
+               rnaturalearthdata,
+               plotly, 
+               countrycode, 
+               htmltools, 
+               reactable,
+               janitor,
+               tidytuesdayR
+               )
+
+```
+
+
+
+```{r include=FALSE}
+# Load dataset
+#tuesdata <- tidytuesdayR::tt_load('2024-08-06')
+#olympics <- tuesdata$olympics
+olympics <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-07-27/olympics.csv')
+
+
+
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+# Age distribution of medalists
+#table(olympics$medal)
+medalists <- olympics %>% 
+                filter(!is.na(medal), season == "Summer")
+age_distribution <- medalists %>% 
+  ggplot(aes(age)) +
+  geom_histogram(fill = "blue") +
+  theme_bw() +
+  labs(title = "Age Distribution of Olympics Medalists",
+       x = "Age in Years",
+       y = "Count") +
+  theme_classic() 
+
+
+
+
+```
+
+
+```{r}
+# Youngest and oldest medalist
+
+
+# Minimum age
+  minimum_age <- min(medalists$age, na.rm = TRUE)
+  maximum_age <- max(medalists$age, na.rm = TRUE)
+  medalist_youngest <- medalists %>% 
+                        filter(age == minimum_age)
+  
+  formatted_value_youngest <- paste(
+  "Name:", medalist_youngest$name,
+  "\nAge:", medalist_youngest$age, 
+  "\nSex:", medalist_youngest$sex, 
+  "\nCountry:", medalist_youngest$team,
+  "\nEvent:", medalist_youngest$event, 
+  "\nMedal:", medalist_youngest$medal
+)
+  medalist_oldest <- medalists %>% 
+                        filter(age == maximum_age)
+  
+  formatted_value_oldest <- paste(
+  "Name:", medalist_oldest$name, 
+  "\nAge:", medalist_oldest$age, 
+  "\nSex:", medalist_oldest$sex, 
+  "\nCountry:", medalist_oldest$team,
+  "\nEvent:", medalist_oldest$event, 
+  "\nMedal:", medalist_oldest$medal)
+  
+  
+  
+  
+```
+
+
+```{r}
+# Country with highest medals
+highest_country <- medalists %>% 
+  group_by(team) %>% 
+  summarise(num_medals = n()) %>% 
+  arrange(desc(num_medals)) %>% 
+  head(1) %>% 
+  pull(team)
+
+highest_country_total <- medalists %>% 
+  group_by(team) %>% 
+  summarise(num_medals = n()) %>% 
+  arrange(desc(num_medals)) %>% 
+  head(1) %>% 
+  pull(num_medals)
+
+highest_country_gold <-medalists %>% 
+                        filter(team == highest_country, medal == "Gold") %>% 
+                        summarise(num_gold = n()) %>% 
+                        pull(num_gold)
+
+highest_country_silver <-medalists %>% 
+                        filter(team == highest_country, medal == "Silver") %>% 
+                        summarise(num_silver = n()) %>% 
+                        pull(num_silver)
+highest_country_bronze <-medalists %>% 
+                        filter(team == highest_country, medal == "Bronze") %>% 
+                        summarise(num_bronze = n()) %>% 
+                        pull(num_bronze)
+#highest_country_total
+#highest_country_gold
+#highest_country_silver
+#highest_country_bronze
+```
+
+
+
+
+```{r message=FALSE, warning=FALSE}
+# Number of Events (Women vrs Men)
+
+num_events_by_gender <- olympics %>% 
+  filter(season == "Summer", medal == "Gold") %>% 
+  group_by(year, sex) %>% 
+  summarise(num_events = n_distinct(event)) %>% 
+  ggplot(aes(x = factor(year), y = num_events, fill = sex)) +
+  geom_bar(stat = "identity", position = "fill") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_discrete(labels = c("M" = "Men", "F" = "Women")) +
+  labs(title = "Number of Olympics Events per Edition",
+       subtitle = "Women vrs Men",
+       y = "Number of Events",
+       x = "Olympic Year",
+       fill = "Gender")
+
+
+
+```
+
+
+
+```{r}
+# Top five countries by gold medals
+top_5_countries <- olympics %>% 
+  filter(medal == "Gold") %>% 
+  group_by(team) %>% 
+  summarise(num_gold = n()) %>% 
+  arrange(desc(num_gold)) %>% 
+  head(5) 
+
+top_5_countries_plot <- top_5_countries %>% 
+  ggplot(aes(reorder(team, num_gold), num_gold, fill = team)) +
+  geom_col() +
+  labs(title = "Top Five Countries by Gold Medals",
+       y = "Number of Gold Medals",
+       x = "",
+       fill = "Country") + 
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  geom_text(aes(label = num_gold), hjust = 1.1, color = "white") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  coord_flip() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_text(face = "bold"))
+  
+```
+
+
+
+
+```{r}
+#United States Gold Medal's Haul over Time
+countries <- top_5_countries %>%
+  pull(team)
+
+
+my_medals_plot <- function(my_data, country, medal_type = "Gold", season_type = "Summer") {
+ plot_data <-  my_data %>%
+    filter(team == country, medal == medal_type, season == season_type) %>%
+    group_by(year, sex) %>%
+    summarise(num_of_gold_medals = n_distinct(event)) %>%
+    ungroup()
+
+ my_plot <- plot_data %>%
+    ggplot(aes(x = year,
+               y = num_of_gold_medals,
+               color = sex)) +
+    geom_line() +
+    theme_classic() +
+    scale_color_discrete(labels = c("M" = "Men", "F" = "Women")) +
+    labs(title = paste(country, "Gold Medal's Haul over Time"),
+         subtitle = "Women vs Men",
+         x = "Olympic Year",
+         y = "Number of Gold Medal Won",
+         colour = "Gender")
+ return(my_plot)
+}
+
+medals_plot_list <- vector("list", length(countries))
+
+names(medals_plot_list) <- countries
+
+#names(medals_plot_list)
+
+for (country in countries) {
+  medals_plot <- my_medals_plot(medalists, country)
+  medals_plot_list[[country]] <-  medals_plot
+}
+  #medals_plot_list[["United States"]]
+
+  #my_medals_plot(medalists, "United States")
+
+```
+
+
+
+```{r}
+# United States Gold Medal's Haul over Time
+
+
+ # plot_data <-  medalists %>% 
+ #    filter(team == "United States", medal == "Gold", season == "Summer") %>% 
+ #    group_by(year, sex) %>% 
+ #    summarise(num_of_gold_medals = n_distinct(event)) %>% 
+ #    ungroup()
+ # 
+ # my_plot <- plot_data %>% 
+ #    ggplot(aes(x = year, 
+ #               y = num_of_gold_medals, 
+ #               color = sex)) +
+ #    geom_line() +
+ #    theme_classic() +
+ #    scale_color_discrete(labels = c("M" = "Men", "F" = "Women")) +
+ #    labs(title = paste(country, "Gold Medal's Haul over Time"),
+ #         subtitle = "Women vs Men",
+ #         x = "Olympic Year",
+ #         y = "Number of Gold Medal Won",
+ #         colour = "Gender")
+ # my_plot_ggplotly <- ggplotly(my_plot, tooltip = "text")
+ # my_plot_ggplotly
+
+```
+
+
+
+
+```{r}
+# Top 10 countries by medals
+top_10_countries_plot <- olympics %>% 
+  filter(medal %in% c("Gold", "Silver", "Bronze"), season == "Summer") %>% 
+  group_by(team) %>% 
+  summarise(total_medals = n()) %>% 
+  arrange(desc(total_medals)) %>% 
+  head(10) %>% 
+  ggplot(aes(total_medals, reorder(team, total_medals), color = team)) +
+  #geom_segment(aes(xend = total_medal, yend = team, x = 0, color = "gray") 
+  geom_segment(aes(xend = total_medals, yend = reorder(team, total_medals), x = 0), lwd = 2) +
+  geom_point(size = 12) +
+  geom_text(aes(label = total_medals), hjust = 0.5, color = "white", size = 4, face = "bold") +
+  theme_classic() +
+  labs(
+  title = "Top 10 Countries in Olympics by Total Number of Medals") +
+  theme(plot.background = element_rect(fill = "white", color = NA),
+        #plot.title = element_text(size = 15, face = "bold", color = "#323232", hjust = 0, vjust = 1, margin = margin(t = 50, b = -20)),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.text.y = element_text(color = "black", face = "bold", size = 10, margin = margin(r = -20)),
+        axis.text.y = element_text(color = "black", face = "bold", size = 12),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.line = element_blank(),
+        plot.title = element_text(size = 15, face = "bold", color = "#323232"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none") 
+              
+```
+
+# Home
+
+## Row 1 {height=30%}
+```{r}
+value_box(
+  title = "Youngest Medalist",
+  value = tagList(tags$div(style = "font-size: 14px;",
+    p(paste("Name:", medalist_youngest$name)),
+    p(paste("Age:", medalist_youngest$age)),
+    p(paste("Country:", medalist_youngest$team)),
+    p(paste("Event:", medalist_youngest$event)),
+    p(paste("Medal:", medalist_youngest$medal))
+  )),
+  showcase = bsicons::bs_icon("trophy"),  # Bronze color
+  theme = value_box_theme(bg = "#cd7f32")
+)
+
+```
+
+```{r}
+value_box(
+  title = "Oldest Medalist",
+  value = tagList(tags$div(style = "font-size: 14px;",
+    p(paste("Name:", medalist_oldest$name)),
+    p(paste("Age:", medalist_oldest$age)),
+    p(paste("Country:", medalist_oldest$team)),
+    p(paste("Event:", medalist_oldest$event)),
+    p(paste("Medal:", medalist_oldest$medal))
+  )),
+  showcase = bsicons::bs_icon("trophy"),
+  theme = value_box_theme(bg = "#c0c0c0")
+)
+```
+
+
+```{r}
+
+  
+ value_box(
+  title = "Country with Highest Medals",
+  value = tagList(tags$div(style = "font-size: 14px;",
+    p(paste("Country:", highest_country)),
+    p(paste("Total Medals:", highest_country_total)),
+    p(paste("Gold:", highest_country_gold)),
+    p(paste("Silver:", highest_country_silver)),
+    p(paste("Bronze:", highest_country_bronze))
+  )),
+  showcase = bsicons::bs_icon("trophy"),
+  theme = value_box_theme(bg = "gold")
+)
+
+
+```
+
+
+
+## Row 2 {height=70%}
+
+### {width=50%}
+
+```{r title = "Age Distribution of Athletes"}
+age_distribution
+
+```
+
+
+
+
+### {width=50%}
+
+
+
+```{r title = "Top Ten Countries by Medals"}
+top_10_countries_plot
+```
+
+
+# TREND
+## Row 1 {height=100%}
+
+### {width=50%}
+```{r title = "NO OF EVENTS OVER TIME (WOMEN VS MEN)"}
+num_events_by_gender
+```
+
+
+
+### {width=50%}
+
+```{r title = "US GOLD MEDAL'S HAUL OVER TIME (WOMEN VS MEN)"}
+my_medals_plot(medalists, "United States")
+```
+
+
+# DOWNLOAD DATA
+
+The data used in this dashboard was the olympics dataset (week 32 
+/2024) sourced from Tidy Tuesday: A weekly social data project. It is shown below and can be downloaded as a CSV
+
+```{r}
+library(htmltools)
+
+htmltools::browsable(
+  tagList(
+    reactable(olympics, 
+              elementId = "tidy_tuesday_olympics_table", 
+              searchable = T, 
+              filterable = T), 
+    
+tags$button("Download as CSV", 
+            onclick = "Reactable.downloadDataCSV('tidy_tuesday_olympics_table')")
+  )
+)
+```
+
+
+# About
+
+
+Welcome to the Summer Olympics Dashboard, an interactive tool for exploring over 100 years of Olympic history. Using data from the RGriffin Kaggle dataset (1896-2016), this project visualizes key insights into medal counts, athlete performance, and demographic trends. This dataset was featured in the TidyTuesday Week 32 of 2024 edition.
+
+
+Built with R and key packages like ggplot2, shiny, and bslib, the project highlights increasing gender parity, achievements of top athletes, and the growing contribution of women to the US Gold medal's count. Future improvements include deeper exploration and predictions of Olympic trends.
+
+Special thanks to the Kaggle dataset and the TidyTuesday community for supporting this project.
